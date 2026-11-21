@@ -1,7 +1,7 @@
 # Telco Customer Churn Analysis
 
 ## Business Problem
-Customer churn directly impacts recurring revenue and increases customer acquisition costs for telecommunications providers. The objective of this project is to identify the primary demographic, account, billing, and service factors driving customer cancellations and build a baseline predictive model so the business can deploy targeted retention strategies and reduce overall churn.
+Customer churn directly impacts recurring revenue and increases customer acquisition costs for telecommunications providers. The objective of this project is to identify the primary demographic, account, billing, and service factors driving customer cancellations and build a predictive churn-scoring model so the business can deploy targeted retention strategies and reduce overall churn.
 
 ## Data
 - **Source:** Telco Customer Churn dataset (`7,043` customer records across `21` features).
@@ -55,28 +55,25 @@ Customer churn directly impacts recurring revenue and increases customer acquisi
 - **Check 2 — Add-On Retention Anchors (`TechSupport` & `OnlineSecurity`):** Within the `Month-to-month + Electronic check` cohort (`n = 1,850`), compare churn rates between customers with `TechSupport == "Yes"` vs. `"No"` and `OnlineSecurity == "Yes"` vs. `"No"`.
 - **Check 3 — Tenure Distribution by Payment Method:** Compare median `tenure` across the four `PaymentMethod` groups to verify whether Electronic check users skew heavily toward brand-new customers (`0–12m`).
 
-## Baseline Modeling & Evaluation
+## Modeling & Validation Results
 
 ### Methodology
 - **Train/Test Split:** Stratified 80/20 split (`5,634` train / `1,409` test records, `random_state=42`) to preserve the exact **26.5%** churn distribution across both sets.
 - **Leak-Proof Preprocessing (`ColumnTransformer`):**
   - Numeric features (`tenure`, `MonthlyCharges`, `TotalCharges`, `SeniorCitizen`) imputed with median and standardized via `StandardScaler`.
-  - Categorical features imputed with most frequent category and encoded via `OneHotEncoder(handle_unknown="ignore")`.
-  - All transformations fitted strictly on `X_train` inside Scikit-Learn `Pipeline` objects to prevent data leakage.
-- **Evaluation Metrics:**
-  - **ROC AUC:** Measures overall ranking discrimination across all classification thresholds.
-  - **Precision @ Top 20%:** Ranks test customers by predicted churn probability and measures the actual churn rate among the top 20% highest-risk customers (`n = 281`), reflecting real-world retention campaign capacity.
+  - Categorical features imputed with most frequent category and encoded via `OneHotEncoder(handle_unknown="ignore", sparse_output=False)`.
+  - All preprocessing steps are encapsulated inside Scikit-Learn `Pipeline` objects so transformations are fitted strictly on training folds without data leakage.
+- **Model Selection Protocol:** Evaluated three candidate pipelines using **5-fold stratified cross-validation** (`StratifiedKFold(n_splits=5, shuffle=True, random_state=42)`) strictly on the training set. Only the highest-scoring model was evaluated once on the hold-out test set.
 
-### Results
+### Model Comparison Results
 
-| Model | ROC AUC | Precision @ Top 20% | Lift over Baseline |
-| :--- | :---: | :---: | :---: |
-| **Dummy Classifier** (`most_frequent`) | `0.5000` | `28.1%` (`0.2811`) | 1.00x (Baseline) |
-| **Logistic Regression** | `0.8421` | `66.2%` (`0.6619`) | **2.35x** |
+| Model | 5-Fold CV ROC AUC (Mean ± Std) | Min / Max Fold AUC | Hold-Out Test ROC AUC | Hold-Out Test Precision @ Top 20% |
+| :--- | :---: | :---: | :---: | :---: |
+| **Logistic Regression** *(Winner)* | **`0.8462 ± 0.0126`** | `0.8252` / `0.8630` | **`0.8421`** | **`66.2%` (`0.6619`)** |
+| **HistGradientBoosting** | `0.8364 ± 0.0054` | `0.8261` / `0.8420` | — *(Not selected)* | — |
+| **Dummy Classifier** (`most_frequent`) | `0.5000 ± 0.0000` | `0.5000` / `0.5000` | — *(Not selected)* | — |
 
-- **Takeaway:** Ranking customers with Logistic Regression more than doubles retention targeting efficiency compared to untargeted outreach (`2.35x` lift), capturing **66.2%** actual churners (`186` of `281` flagged customers) within the top 20% highest-risk segment.
+- **Model Selection Takeaway:** **Logistic Regression** outperformed default `HistGradientBoosting` by nearly a full percentage point in cross-validated ROC AUC (`0.8462` vs. `0.8364`) because the dataset's core churn relationships (such as `tenure` and `Contract` tiers) follow strong, monotonic linear patterns without heavy overfitting. On the unseen hold-out test set (`n = 1,409`), Logistic Regression achieved an **ROC AUC of `0.8421`** and **Precision @ Top 20% of `66.2%`** (`186` actual churners captured out of `281` flagged customers—a **2.35x lift** over untargeted outreach).
 
 ## Recommended Action Items
 - **Score & Target the Top 20% Highest-Risk Customers:** Deploy the Logistic Regression risk score monthly to prioritize retention outreach toward the top 20% highest-probability churners (`66.2%` precision) rather than running untargeted campaigns.
-- **Bundle Auto-Pay + Contract Upgrades for Electronic Check Users:** Target the **1,850 Month-to-month Electronic check customers** (`53.7%` churn) with a combined incentive—such as a `$5/month` bill credit or waived fee—when they enroll in automatic payments alongside a 1-year contract.
-- **Launch a First-Year Onboarding Program:** Target new customers in months **0–12** (`47.4%` churn) with proactive check-ins and loyalty milestones to guide them past the critical first-year drop-off window.
