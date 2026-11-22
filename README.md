@@ -77,9 +77,3 @@ Customer churn directly impacts recurring revenue and increases customer acquisi
 
 ## Data leakage safeguards
 - **What leakage is:** Data leakage occurs when information from outside the training dataset (such as validation/test statistics or future post-outcome data) is inadvertently used to train or preprocess a model, creating overly optimistic evaluation metrics that fail in production.
-- **How this project prevents it:** All preprocessing (`SimpleImputer`, `StandardScaler`, and `OneHotEncoder`) is encapsulated inside a Scikit-Learn `ColumnTransformer` and `Pipeline` fitted strictly on training folds during 5-fold cross-validation (`X_train`), while the hold-out test set (`X_test`) remains completely untouched until a single final evaluation of the winning model.
-- **Known limitation:** Because this dataset is a static single-point-in-time snapshot without feature timestamps, we cannot verify exact temporal ordering (e.g., whether a customer switched to `Month-to-month` or `PaperlessBilling` shortly before churning rather than months prior), which could introduce subtle target-proxy leakage in a live production deployment.
-
-
-## Recommended Action Items
-- **Score & Target the Top 20% Highest-Risk Customers:** Deploy the Logistic Regression risk score monthly to prioritize retention outreach toward the top 20% highest-probability churners (`66.2%` precision) rather than running untargeted campaigns.
