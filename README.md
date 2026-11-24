@@ -1,4 +1,4 @@
-# Telco Customer Churn Analysis
+ # Telco Customer Churn Analysis
 
 ## Business Problem
 Customer churn directly impacts recurring revenue and increases customer acquisition costs for telecommunications providers. The objective of this project is to identify the primary demographic, account, billing, and service factors driving customer cancellations and build a predictive churn-scoring model so the business can deploy targeted retention strategies and reduce overall churn.
@@ -62,8 +62,7 @@ Customer churn directly impacts recurring revenue and increases customer acquisi
 - **Leak-Proof Preprocessing (`ColumnTransformer`):**
   - Numeric features (`tenure`, `MonthlyCharges`, `TotalCharges`, `SeniorCitizen`) imputed with median and standardized via `StandardScaler`.
   - Categorical features imputed with most frequent category and encoded via `OneHotEncoder(handle_unknown="ignore", sparse_output=False)`.
-  - All preprocessing steps are encapsulated inside Scikit-Learn `Pipeline` objects so transformations are fitted strictly on training folds without data leakage.
-- **Model Selection Protocol:** Evaluated three candidate pipelines using **5-fold stratified cross-validation** (`StratifiedKFold(n_splits=5, shuffle=True, random_state=42)`) strictly on the training set. Only the highest-scoring model was evaluated once on the hold-out test set.
+
 
 ### Model Comparison Results
 
@@ -77,3 +76,75 @@ Customer churn directly impacts recurring revenue and increases customer acquisi
 
 ## Data leakage safeguards
 - **What leakage is:** Data leakage occurs when information from outside the training dataset (such as validation/test statistics or future post-outcome data) is inadvertently used to train or preprocess a model, creating overly optimistic evaluation metrics that fail in production.
+- **How this project prevents it:** All preprocessing (`SimpleImputer`, `StandardScaler`, and `OneHotEncoder`) is encapsulated inside a Scikit-Learn `ColumnTransformer` and `Pipeline` fitted strictly on training folds during 5-fold cross-validation (`X_train`), while the hold-out test set (`X_test`) remains completely untouched until a single final evaluation of the winning model.
+- **Known limitation:** Because this dataset is a static single-point-in-time snapshot without feature timestamps, we cannot verify exact temporal ordering (e.g., whether a customer switched to `Month-to-month` or `PaperlessBilling` shortly before churning rather than months prior), which could introduce subtle target-proxy leakage in a live production deployment.
+
+## Model Explainability: Top Churn & Retention Drivers
+
+Extracting the learned log-odds coefficients from the fitted `LogisticRegression` pipeline confirms our core EDA drivers while highlighting important nuances in how correlated billing and service features behave together:
+
+### Top Risk-Increasing vs. Retention-Driving Features
+
+| Direction | Feature | Coefficient (Log-Odds) | Odds Ratio |
+| :--- | :--- | :---: | :---: |
+| **Pushes Risk UP** | `InternetService_Fiber optic` | `+0.6342` | `1.89x` |
+| **Pushes Risk UP** | `Contract_Month-to-month` | `+0.5829` | `1.79x` |
+| **Pushes Risk UP** | `TotalCharges` | `+0.5363` | `1.71x` |
+| **Pushes Risk UP** | `StreamingMovies_Yes` / `StreamingTV_Yes` | `+0.2009` / `+0.2005` | `1.22x` |
+| **Pushes Risk UP** | `PaymentMethod_Electronic check` | `+0.1979` | `1.22x` |
+| **Pushes Risk UP** | `OnlineSecurity_No` / `TechSupport_No` | `+0.1563` / `+0.1315` | `1.17x` / `1.14x` |
+| **Pushes Risk DOWN** | `tenure` | `-1.2575` | `0.28x` |
+| **Pushes Risk DOWN** | `Contract_Two year` | `-0.7766` | `0.46x` |
+| **Pushes Risk DOWN** | `InternetService_DSL` | `-0.6486` | `0.52x` |
+| **Pushes Risk DOWN** | `MonthlyCharges` | `-0.5919` | `0.55x` |
+| **Pushes Risk DOWN** | `PaperlessBilling_No` | `-0.3432` | `0.71x` |
+| **Pushes Risk DOWN** | `No internet service` *(7 identical columns)* | `-0.3001` | `0.74x` |
+
+### Key Takeaways & Interpretation Caveats
+- **Alignment with EDA Findings:** As expected, **Fiber optic internet** (`+0.634`), **Month-to-month contracts** (`+0.583`), **Electronic check payments** (`+0.198`), and **missing security/tech support** (`+0.156` / `+0.132`) are the primary drivers pushing churn risk upward, while **longer tenure** (`-1.258`), **Two-year contracts** (`-0.777`), and **DSL service** (`-0.649`) are the strongest retention anchors.
+- **Caveat 1 — Correlated Billing Columns (`tenure`, `MonthlyCharges`, and `TotalCharges`):** Tenure, monthly bill, and total amount paid are closely linked because `TotalCharges` is roughly `tenure × MonthlyCharges`. As a result, the model splits their combined effect across all three features (`MonthlyCharges` appears negative at `-0.592` while `TotalCharges` is positive at `+0.536`). **What to act on:** Longer-staying customers are much less likely to leave—do not read the individual bill coefficients as *"higher monthly bills keep customers."*
+- **Caveat 2 — Streaming Add-Ons (`StreamingTV_Yes` / `StreamingMovies_Yes`):** In raw EDA, streaming subscribers do not look unusually risky because they tend to have longer tenure and more bundled add-ons, which masks churn risk. Once the model compares streamers against otherwise similar customers (same tenure, contract, and internet tier), a modest positive churn risk (`+0.201`) emerges—a hypothesis that can be verified by comparing median tenure for `StreamingTV == "Yes"` vs. `"No"`.
+- **Caveat 3 — Duplicated `"No internet service"` Columns:** One-hot encoding creates identical `0/1` indicator columns across `InternetService_No` and all six internet add-on columns (`OnlineSecurity`, `OnlineBackup`, `DeviceProtection`, `TechSupport`, `StreamingTV`, `StreamingMovies`), causing L2 regularization to split the exact same retention effect equally (`-0.3001` each) across all seven duplicated indicators.
+
+## Recommended Action Items
+- **Score & Target the Top 20% Highest-Risk Customers:** Deploy the Logistic Regression risk score monthly to prioritize retention outreach toward the top 20% highest-probability churners (`66.2%` precision) rather than running untargeted campaigns.
+- **Bundle Auto-Pay + Contract Upgrades for Electronic Check Users:** Target the **1,850 Month-to-month Electronic check customers** (`53.7%` churn) with a combined incentive—such as a `$5/month` bill credit or waived fee—when they enroll in automatic payments alongside a 1-year contract.
+- **Launch a First-Year Onboarding Program:** Target new customers in months **0–12** (`47.4%` churn) with proactive check-ins and loyalty milestones to guide them past the critical first-year drop-off window.
+- **Audit the Fiber Optic Experience & Pricing:** Investigate pricing sensitivity, technical support usage, and add-on adoption specifically among **Fiber optic** subscribers (`41.9%` churn).
+- **Promote Family & Multi-User Bundles:** Market multi-line or household value packs to single customers without partners or dependents to increase switching costs and account stickiness.
+
+## Reproducibility Note
+Before committing updates to the repository, ensure clean execution order in Jupyter Notebook via **Kernel → Restart & Run All** so all cell outputs and metrics execute sequentially from top to bottom.
+
+## Who should we call, and why
+
+### 1. What Makes a Customer High-Risk? (Top Model Drivers)
+Our Logistic Regression model scores every customer's churn risk based on their account profile:
+- **Primary Churn Triggers (Push Risk UP):** Customers on **Month-to-month contracts** (`1.79x` odds), **Fiber optic internet** (`1.89x` odds), **Electronic check payments** (`1.22x` odds), and those lacking **Online Security** (`1.17x`) or **Tech Support** (`1.14x`) carry the highest cancellation risk.
+- **Primary Retention Anchors (Push Risk DOWN):** **Longer tenure** (`0.28x` odds per standard-deviation increase), **Two-year contracts** (`0.46x` odds), and **DSL service** (`0.52x` odds) strongly protect against churn.
+- **How to Read Billing & Streaming Features:**
+  - *Tenure vs. Monthly/Total Bill:* Because `TotalCharges` is roughly `tenure × MonthlyCharges`, the model splits their combined effect (`MonthlyCharges` appears negative while `TotalCharges` is positive). The takeaway for retention managers is straightforward: **longer-staying customers are much less likely to leave**—do not interpret individual bill coefficients as *"higher monthly bills retain customers."*
+  - *Streaming Add-Ons:* In raw data, streaming subscribers look stable because they tend to have longer tenure. Once the model compares streamers against otherwise similar customers (same tenure, contract, and internet tier), a small extra churn risk (`1.22x` odds) appears.
+
+### 2. When Should We Call? (The `0.33` Profit-Optimal Cutoff)
+- **Why `0.33` Is the Breakeven Threshold:** Each retention call costs **$50**, and saving a true churner yields **$150** in expected value (`30%` save rate × `$500` customer lifetime value). Calling a customer breaks even when `Churn Probability × $150 = $50`, which equals **`0.333` (`33.3%`)**. Sweeping thresholds on leak-free out-of-fold training predictions confirms that profit peaks at **`0.33`**, outperforming the conservative `0.50` default and `Top 20%` benchmarks on training data.
+- **Hold-Out Test Set Business Impact (`n = 1,409` customers, `374` actual churners):**
+
+| Calling Strategy | Customers Called | Real Churners Reached | Recall (% of Churners Caught) | Expected Net Profit ($) |
+| :--- | :---: | :---: | :---: | :---: |
+| **Optimal Train Threshold (`0.33`)** | `500` | `269` | **`71.9%`** | **`$15,350`** |
+| **Default Cutoff (`0.50`)** | `318` | `209` | `55.9%` | **`$15,450`** |
+| **Top 20% Highest Risk Only** | `281` | `186` | `49.7%` | `$13,850` |
+
+- **Manager Decision Rule:** Both `0.33` (`$15,350`) and `0.50` (`$15,450`) beat the `Top 20%` cutoff (`$13,850`) by ~$1,500–$1,600 on the test set and deliver virtually identical net profit. **Use `0.33` when maximizing subscriber retention is the goal** (catching `60` more churners—`71.9%` vs. `55.9%`—at break-even incremental cost), or **use `0.50` when call-center bandwidth is constrained** (achieving the same profit with `36%` fewer calls).
+
+### 3. Who Does the Model Miss? (Error Analysis on Training OOF Predictions)
+To understand the model's blind spots without leaking test-set information, we analyzed all **`1,495` real churners** in the training set using out-of-fold cross-validation predictions (giving a larger sample of `389` missed churners scored by models that had not seen them):
+- **Summary:** At the **`0.33`** threshold, the model **catches `74.0%` of real churners (`1,106` of `1,495`)** and **misses `26.0%` (`389` of `1,495`)**.
+- **How Missed Churners (`prob < 0.33`) Differ from Caught Churners (`prob >= 0.33`):**
+  - **Contracts:** `98.7%` of caught churners are Month-to-month, whereas **`39.8%` of missed churners are on One-year (`29.8%`) or Two-year (`10.0%`) contracts** (only `60.2%` Month-to-month).
+  - **Tenure:** Missed churners have a **median tenure of `37.0` months**—more than **5x longer** than caught churners (**median `7.0` months**).
+  - **Payment Method:** Caught churners are heavily concentrated in Electronic check (`68.7%`), while **missed churners are spread evenly—with `46.6%` enrolled in automatic payments** (`22.9%` Bank transfer, `23.7%` Credit card).
+  - **Internet & Monthly Bill:** Caught churners are `80.5%` Fiber optic with a higher median bill (`$81.12`), whereas **missed churners include `37.8%` DSL and `22.4%` No internet**, paying a lower **median bill of `$60.30`**.
+  - **Borderline Near-Misses (`prob` `0.308–0.329`):** Inspecting the 30 highest-probability missed churners shows two recurring groups just below the cutoff: (1) **long-tenure Fiber optic subscribers (`25–58` months)** on auto-pay whose loyalty history offsets their high bill, and (2) **new DSL / No-internet customers (`1–9` months)** whose lower monthly bills keep them below `0.33`.
+- **Manager Takeaway:** The model misses churners who look like **"safe" customers on paper**—longer tenure, annual contracts, auto-pay, and cheaper plans. Their reasons for leaving (such as recent service outages, unresolved support tickets, relocation, or expiring contract promos) are not captured in this static account dataset.
