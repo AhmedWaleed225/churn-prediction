@@ -148,3 +148,43 @@ To understand the model's blind spots without leaking test-set information, we a
   - **Internet & Monthly Bill:** Caught churners are `80.5%` Fiber optic with a higher median bill (`$81.12`), whereas **missed churners include `37.8%` DSL and `22.4%` No internet**, paying a lower **median bill of `$60.30`**.
   - **Borderline Near-Misses (`prob` `0.308–0.329`):** Inspecting the 30 highest-probability missed churners shows two recurring groups just below the cutoff: (1) **long-tenure Fiber optic subscribers (`25–58` months)** on auto-pay whose loyalty history offsets their high bill, and (2) **new DSL / No-internet customers (`1–9` months)** whose lower monthly bills keep them below `0.33`.
 - **Manager Takeaway:** The model misses churners who look like **"safe" customers on paper**—longer tenure, annual contracts, auto-pay, and cheaper plans. Their reasons for leaving (such as recent service outages, unresolved support tickets, relocation, or expiring contract promos) are not captured in this static account dataset.
+
+
+## Project Structure & How to Run
+
+### Repository Layout
+```text
+├── app.py                   # Streamlit retention scoring & call-list app
+├── data/
+│   ├── WA_Fn-UseC_-Telco-Customer-Churn.csv
+│   └── sample_customers.csv # 50-row sample CSV (without Churn) for testing the app
+├── models/
+│   └── churn_model.joblib   # Trained Logistic Regression pipeline artifact
+├── notebooks/               # Exploratory analysis, validation, and threshold tuning notebooks
+├── src/
+│   ├── __init__.py
+│   ├── data.py              # Shared clean(df) preprocessing function
+│   └── train.py             # Trains pipeline on full dataset and saves churn_model.joblib
+├── tests/
+│   └── test_data.py         # Unit tests for data cleaning
+├── requirements.txt
+└── README.md
+```
+
+### Setup & Usage (Run from Project Root)
+1. **Install dependencies:**
+   ```bash
+   pip install -r requirements.txt
+   ```
+2. **Run unit tests:**
+   ```bash
+   python -m pytest
+   ```
+3. **Train and save the production model:**
+   ```bash
+   python -m src.train
+   ```
+4. **Launch the Streamlit retention app:**
+   ```bash
+   streamlit run app.py
+   ```
