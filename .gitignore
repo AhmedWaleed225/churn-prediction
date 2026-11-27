@@ -1,3 +1,7 @@
-data/
+# Ignore everything inside data/ except sample_customers.csv
+data/*
+!data/sample_customers.csv
+
+# Ignore Jupyter checkpoints and Python cache
 .ipynb_checkpoints/
 __pycache__/
