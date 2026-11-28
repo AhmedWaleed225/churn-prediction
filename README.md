@@ -1,4 +1,30 @@
  # Telco Customer Churn Analysis
+# Telco Customer Churn Analysis
+
+**Live App:** [Telco Churn Retention Scorer](https://churn-prediction-8gk9gjan4nvxvhgh5jxnmj.streamlit.app/)
+
+![Telco Churn Retention Scorer App](data/App.png)
+
+## How to run locally
+
+1. **Install dependencies:**
+   ```bash
+   pip install -r requirements.txt
+   ```
+2. **Train and save the model:**
+   ```bash
+   python -m src.train
+   ```
+3. **Launch the Streamlit app:**
+   ```bash
+   streamlit run app.py
+   ```
+4. **Run unit tests:**
+   ```bash
+   python -m pytest
+   ```
+
+
 
 ## Business Problem
 Customer churn directly impacts recurring revenue and increases customer acquisition costs for telecommunications providers. The objective of this project is to identify the primary demographic, account, billing, and service factors driving customer cancellations and build a predictive churn-scoring model so the business can deploy targeted retention strategies and reduce overall churn.
